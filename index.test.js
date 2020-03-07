@@ -3,6 +3,10 @@ const mockedEnv = require("mocked-env");
 const nock = require("nock");
 nock.disableNetConnect();
 
+// Reused variables
+const merge_commit_sha = "253187c4c33beddeb518eb331e4efaf41b2f4feb";
+const sha = "fe4f4ff2f32bc41d04757bfbae347f8be189d091";
+
 describe("Hold Your Horses", () => {
   let action, tools, restore, restoreTest;
   Toolkit.run = jest.fn(actionFn => {
@@ -16,14 +20,26 @@ describe("Hold Your Horses", () => {
       GITHUB_ACTION: "Hold Your Horses Action",
       GITHUB_ACTOR: "mheap",
       GITHUB_WORKSPACE: "/tmp",
-      GITHUB_SHA: "253187c4c33beddeb518eb331e4efaf41b2f4feb",
-      GITHUB_REPOSITORY: "mheap/test-repo-hyh-stream"
-      //GITHUB_EVENT_PATH: __dirname + '/fixtures/pr-opened.json'
+      GITHUB_SHA: merge_commit_sha,
+      GITHUB_REPOSITORY: "mheap/test-repo-hyh-stream",
+      GITHUB_EVENT_NAME: "",
+      GITHUB_EVENT_PATH: ""
     });
 
     tools = new Toolkit();
+    tools.context.loadPerTestEnv = function() {
+      this.payload = process.env.GITHUB_EVENT_PATH
+        ? require(process.env.GITHUB_EVENT_PATH)
+        : {};
+      this.event = process.env.GITHUB_EVENT_NAME;
+    };
+
     tools.exit.success = jest.fn();
     tools.exit.failure = jest.fn();
+
+    tools.log.info = jest.fn();
+    tools.log.pending = jest.fn();
+    tools.log.complete = jest.fn();
   });
 
   afterEach(() => {
@@ -31,127 +47,61 @@ describe("Hold Your Horses", () => {
     restoreTest();
   });
 
-  it("runs to completion on opened PR", async () => {
-    restoreTest = mockedEnv({
-      GITHUB_EVENT_NAME: "pull_request"
+  ["opened", "synchronize"].forEach(event => {
+    it(`runs to completion on PR ${event}`, async () => {
+      restoreTest = testEnv(tools, {
+        GITHUB_EVENT_NAME: "pull_request",
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`
+      });
+
+      mockUpdateStatus(
+        "pending",
+        "Giving others the opportunity to review"
+      ).reply(200);
+
+      await action(tools);
+      expect(tools.log.pending).toHaveBeenCalledWith(
+        "Adding pending status check"
+      );
+      expect(tools.log.complete).toHaveBeenCalledWith(
+        "Added pending status check"
+      );
+      expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
     });
 
-    mockUpdateStatus(
-      "pending",
-      "Giving others the opportunity to review"
-    ).reply(200);
+    it(`handles errors on PR ${event}`, async () => {
+      restoreTest = testEnv(tools, {
+        GITHUB_EVENT_NAME: "pull_request",
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`
+      });
 
-    tools.log.pending = jest.fn();
-    tools.log.complete = jest.fn();
+      mockUpdateStatus(
+        "pending",
+        "Giving others the opportunity to review"
+      ).reply(422, {
+        message: `No commit found for SHA: ${merge_commit_sha}`,
+        documentation_url:
+          "https://developer.github.com/v3/repos/statuses/#create-a-status"
+      });
 
-    tools.context.payload = { action: "opened" };
-
-    await action(tools);
-    expect(tools.log.pending).toHaveBeenCalledWith(
-      "Adding pending status check"
-    );
-    expect(tools.log.complete).toHaveBeenCalledWith(
-      "Added pending status check"
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
-
-  it("handles errors on opened PR", async () => {
-    restoreTest = mockedEnv({
-      GITHUB_EVENT_NAME: "pull_request"
+      await action(tools);
+      expect(tools.log.pending).toHaveBeenCalledWith(
+        "Adding pending status check"
+      );
+      expect(tools.exit.failure).toHaveBeenCalledWith(
+        `No commit found for SHA: ${merge_commit_sha}`
+      );
     });
-
-    mockUpdateStatus(
-      "pending",
-      "Giving others the opportunity to review"
-    ).reply(422, {
-      message:
-        "No commit found for SHA: 253187c4c33beddeb518eb331e4efaf41b2f4feb",
-      documentation_url:
-        "https://developer.github.com/v3/repos/statuses/#create-a-status"
-    });
-
-    tools.log.pending = jest.fn();
-    tools.log.complete = jest.fn();
-
-    tools.context.payload = { action: "opened" };
-
-    await action(tools);
-    expect(tools.log.pending).toHaveBeenCalledWith(
-      "Adding pending status check"
-    );
-    expect(tools.exit.failure).toHaveBeenCalledWith(
-      "No commit found for SHA: 253187c4c33beddeb518eb331e4efaf41b2f4feb"
-    );
   });
 
-  it("runs on synchronized PR", async () => {
-    tools.context.payload = { action: "synchronize" };
-    await action(tools);
-    expect(tools.exit.success).toHaveBeenCalled();
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
+  it("runs successfully with a user specified duration", async () => {
+    restoreTest = scheduleTrigger(tools, "PT3M");
 
-  it("runs successfully with the default duration", async () => {
-    expect(tools.log.info).toHaveBeenCalledWith(
-      "Running with duration of PT10M"
-    );
-  });
+    mockOpenPulls();
+    mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
 
-  fit("runs successfully with a user specified duration", async () => {
-    restoreTest = mockedEnv({
-      GITHUB_EVENT_NAME: "schedule",
-      INPUT_DURATION: "PT3M"
-    });
-
-    tools.context.payload = { schedule: "* * * * *" };
-
-    tools.log.info = jest.fn();
-
-    nock("https://api.github.com")
-      .get("/repos/mheap/test-repo-hyh-stream/pulls?state=open")
-      .reply(200, [
-        {
-          merge_commit_sha: "253187c4c33beddeb518eb331e4efaf41b2f4feb",
-          head: {
-            sha: "fe4f4ff2f32bc41d04757bfbae347f8be189d091"
-          }
-        }
-      ]);
-
-    nock("https://api.github.com")
-      .get(
-        "/repos/mheap/test-repo-hyh-stream/commits/253187c4c33beddeb518eb331e4efaf41b2f4feb/statuses"
-      )
-      .reply(200, [
-        {
-          state: "pending",
-          context: "hold-your-horses",
-          updated_at: "2020-03-07T16:50:47Z"
-        }
-      ]);
-
-    nock("https://api.github.com")
-      .post(
-        "/repos/mheap/test-repo-hyh-stream/statuses/253187c4c33beddeb518eb331e4efaf41b2f4feb",
-        {
-          state: "success",
-          context: "hold-your-horses",
-          description: "Review time elapsed"
-        }
-      )
-      .reply(200);
-
-    nock("https://api.github.com")
-      .post(
-        "/repos/mheap/test-repo-hyh-stream/statuses/fe4f4ff2f32bc41d04757bfbae347f8be189d091",
-        {
-          state: "success",
-          context: "hold-your-horses",
-          description: "Review time elapsed"
-        }
-      )
-      .reply(200);
+    mockUpdateStatus("success", "Review time elapsed").reply(200);
+    mockUpdateStatus("success", "Review time elapsed", sha).reply(200);
 
     await action(tools);
     expect(tools.log.info).toHaveBeenCalledWith(
@@ -175,11 +125,61 @@ describe("Hold Your Horses", () => {
   // updated_at isn't parseable
 });
 
-function mockUpdateStatus(state, description) {
-  nock(
-    "https://api.github.com"
-  ).post(
-    "/repos/mheap/test-repo-hyh-stream/statuses/253187c4c33beddeb518eb331e4efaf41b2f4feb",
-    { state, context: "hold-your-horses", description }
+function testEnv(tools, params) {
+  const r = mockedEnv(params);
+  tools.context.loadPerTestEnv();
+  return r;
+}
+
+function scheduleTrigger(tools, duration) {
+  return testEnv(tools, {
+    GITHUB_EVENT_NAME: "schedule",
+    GITHUB_EVENT_PATH: `${__dirname}/fixtures/schedule.json`,
+    INPUT_DURATION: duration
+  });
+}
+
+function mockUpdateStatus(state, description, mockSha) {
+  // Default to the merge commit, but allow a value to be passed
+  // in case we need to overwrite it
+  mockSha = mockSha || merge_commit_sha;
+
+  return nock("https://api.github.com").post(
+    `/repos/mheap/test-repo-hyh-stream/statuses/${mockSha}`,
+    {
+      state,
+      context: "hold-your-horses",
+      description
+    }
   );
+}
+
+function mockOpenPulls() {
+  nock("https://api.github.com")
+    .get("/repos/mheap/test-repo-hyh-stream/pulls?state=open")
+    .reply(200, [
+      {
+        merge_commit_sha,
+        head: {
+          sha
+        }
+      }
+    ]);
+}
+
+function mockStatuses(states) {
+  const response = [];
+  for (let s of states) {
+    response.push({
+      state: s[0],
+      context: "hold-your-horses",
+      updated_at: s[1]
+    });
+  }
+
+  nock("https://api.github.com")
+    .get(
+      `/repos/mheap/test-repo-hyh-stream/commits/${merge_commit_sha}/statuses`
+    )
+    .reply(200, response);
 }
