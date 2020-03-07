@@ -13,11 +13,13 @@ describe('Hold Your Horses', () => {
     tools = new Toolkit()
     // Mock methods on it!
     tools.exit.success = jest.fn()
+
+    process.env.GITHUB_REPOSITORY = 'mheap/test-repo-hyh-stream';
   })
 
-  it('exits successfully', () => {
-    action(tools)
+  it('exits successfully', async () => {
+    await action(tools)
     expect(tools.exit.success).toHaveBeenCalled()
-    expect(tools.exit.success).toHaveBeenCalledWith('We did it!')
+    expect(tools.exit.success).toHaveBeenCalledWith('Action finished')
   })
 })

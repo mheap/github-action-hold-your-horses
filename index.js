@@ -1,5 +1,5 @@
 const { Toolkit } = require('actions-toolkit')
-const { parse, end } = require('iso8601-duration');
+const { parse, toSeconds } = require('iso8601-duration');
 
 // Run your GitHub Action!
 Toolkit.run(async tools => {
@@ -11,7 +11,8 @@ Toolkit.run(async tools => {
     // It's run on schedule, so let's check if any statuses need to be updated
     tools.log.info("Schedule code");
     const prs = (await tools.github.pulls.list({
-      ...tools.context.repo
+      ...tools.context.repo,
+      state: "open"
     })).data;
 
     const shas = prs.map((pr) => {
@@ -25,7 +26,14 @@ Toolkit.run(async tools => {
         ref
       })).data;
 
-      const latestStatus = statuses.filter((s) => s.context == 'hold-your-horses')[0];
+      const hyhStatuses = statuses.filter((s) => s.context == 'hold-your-horses');
+
+      if (hyhStatuses.length == 0) {
+        tools.log.info(`No statuses for ${ref}`);
+        continue;
+      }
+
+      const latestStatus = hyhStatuses[0];
       const updatedAt = Date.parse(latestStatus.updated_at);
 
       const duration = toSeconds( parse('PT1H') );
@@ -57,8 +65,8 @@ function addSuccessStatusCheck(tools, sha) {
   return tools.github.repos.createStatus({
     ...tools.context.repo,
     sha,
-    state: "pending",
+    state: "success",
     context: "hold-your-horses",
-    description: "Giving others the opportunity to review"
+    description: "Review time elapsed"
   });
 }
