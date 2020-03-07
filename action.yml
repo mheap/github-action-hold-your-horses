@@ -1,0 +1,8 @@
+name: Hold Your Horses
+description: Prevent PRs from being merged too quickly
+runs:
+  using: docker
+  image: Dockerfile
+branding:
+  icon: stop-circle
+  color: red
