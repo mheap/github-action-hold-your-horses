@@ -4,9 +4,12 @@ const { parse, toSeconds } = require('iso8601-duration');
 // Run your GitHub Action!
 Toolkit.run(async tools => {
 
+  //if (true){
   if (tools.context.event == "pull_request" && ['opened', 'synchronize'].indexOf(tools.context.payload.action) !== -1) {
     // If the PR is opened or synchronized
+    tools.log.pending("Adding pending status check");
     await addPendingStatusCheck(tools);
+    tools.log.complete("Added pending status check");
   } else {
     // It's run on schedule, so let's check if any statuses need to be updated
     tools.log.info("Schedule code");
