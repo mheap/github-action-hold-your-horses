@@ -20,20 +20,23 @@ Toolkit.run(async tools => {
     })).data;
 
     const shas = prs.map((pr) => {
-      return pr.merge_commit_sha
+      return {
+        from: pr.merge_commit_sha,
+        to: pr.head.sha
+      };
     });
 
     // For each sha, check if it's due an update
     for (let ref of shas) {
       const statuses = (await tools.github.repos.listStatusesForRef({
         ...tools.context.repo,
-        ref
+        ref: ref.from
       })).data;
 
       const hyhStatuses = statuses.filter((s) => s.context == 'hold-your-horses');
 
       if (hyhStatuses.length == 0) {
-        tools.log.info(`No statuses for ${ref}`);
+        tools.log.info(`No statuses for ${ref.from}`);
         continue;
       }
 
@@ -44,10 +47,10 @@ Toolkit.run(async tools => {
       const markAsSuccess = ((new Date) - updatedAt) > duration;
 
       if (markAsSuccess) {
-        tools.log.info(`Marking ${ref} as done`);
-        await addSuccessStatusCheck(tools, ref);
+        tools.log.info(`Marking ${ref.to} as done`);
+        await addSuccessStatusCheck(tools, ref.to);
       } else {
-        tools.log.info(`Skipping ${ref}`);
+        tools.log.info(`Skipping ${ref.to}`);
       }
 
     }
