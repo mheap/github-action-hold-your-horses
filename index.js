@@ -21,8 +21,8 @@ Toolkit.run(async tools => {
 
     const shas = prs.map((pr) => {
       return {
-        from: pr.merge_commit_sha,
-        to: pr.head.sha
+        merge: pr.merge_commit_sha,
+        head: pr.head.sha
       };
     });
 
@@ -30,13 +30,13 @@ Toolkit.run(async tools => {
     for (let ref of shas) {
       const statuses = (await tools.github.repos.listStatusesForRef({
         ...tools.context.repo,
-        ref: ref.from
+        ref: ref.merge
       })).data;
 
       const hyhStatuses = statuses.filter((s) => s.context == 'hold-your-horses');
 
       if (hyhStatuses.length == 0) {
-        tools.log.info(`No statuses for ${ref.from}`);
+        tools.log.info(`No statuses for ${ref.merge}`);
         continue;
       }
 
@@ -44,14 +44,17 @@ Toolkit.run(async tools => {
       const updatedAt = Date.parse(latestStatus.updated_at);
 
       const duration = toSeconds( parse('PT1H') );
-      const markAsSuccess = ((new Date) - updatedAt) > duration;
+      const elapsed = Math.floor(((new Date) - updatedAt) / 1000);
+
+      const markAsSuccess = (elapsed > duration);
 
       if (markAsSuccess) {
-        tools.log.info(`Marking ${ref.to} as done`);
-        await addSuccessStatusCheck(tools, ref.to);
-        await addSuccessStatusCheck(tools, ref.from);
+        tools.log.info(`Marking ${ref.merge} as done`);
+        await addSuccessStatusCheck(tools, ref.merge);
+        tools.log.info(`Marking ${ref.head} as done`);
+        await addSuccessStatusCheck(tools, ref.head);
       } else {
-        tools.log.info(`Skipping ${ref.to}`);
+        tools.log.info(`Skipping ${ref.merge} and ${ref.head}`);
       }
 
     }
