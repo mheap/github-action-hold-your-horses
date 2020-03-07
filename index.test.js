@@ -133,6 +133,20 @@ describe('Hold Your Horses', () => {
     expect(tools.log.info).toHaveBeenCalledWith('Running with duration of PT3M')
     expect(tools.exit.success).toHaveBeenCalledWith('Action finished')
   })
+
+  // Additional test cases
+  //
+  // Default duration
+  // User specified duration
+  // Duration isn't parseable
+  // Duration elapsed
+  // Duration not elapsed
+  // Error updating merge commit status
+  // Error updating head commit status
+  // No statuses returned for ref
+  // No statuses returned for ref with hold-your-horses context
+  // Check is already successful
+  // updated_at isn't parseable
 })
 
 function mockStatus(state, description) {
