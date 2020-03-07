@@ -14,6 +14,9 @@ Toolkit.run(async tools => {
   } else {
     // It's run on schedule, so let's check if any statuses need to be updated
     tools.log.info("Schedule code");
+
+    const requiredDelay = tools.inputs.duration || 'PT10M';
+
     const prs = (await tools.github.pulls.list({
       ...tools.context.repo,
       state: "open"
@@ -43,7 +46,7 @@ Toolkit.run(async tools => {
       const latestStatus = hyhStatuses[0];
       const updatedAt = Date.parse(latestStatus.updated_at);
 
-      const duration = toSeconds( parse('PT1H') );
+      const duration = toSeconds( parse(requiredDelay) );
       const elapsed = Math.floor(((new Date) - updatedAt) / 1000);
 
       const markAsSuccess = (elapsed > duration);
