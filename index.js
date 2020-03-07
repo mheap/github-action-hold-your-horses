@@ -3,19 +3,19 @@ const { parse, toSeconds } = require('iso8601-duration');
 
 // Run your GitHub Action!
 Toolkit.run(async tools => {
+  const isOpenedOrSynchronizedPr = (tools.context.event == "pull_request" && ['opened', 'synchronize'].indexOf(tools.context.payload.action) !== -1);
 
-  //if (true){
-  if (tools.context.event == "pull_request" && ['opened', 'synchronize'].indexOf(tools.context.payload.action) !== -1) {
-    // If the PR is opened or synchronized
+  if (isOpenedOrSynchronizedPr) {
     tools.log.pending("Adding pending status check");
-    const d = (await addPendingStatusCheck(tools)).data;
-    console.log(d);
+    await addPendingStatusCheck(tools);
     tools.log.complete("Added pending status check");
   } else {
     // It's run on schedule, so let's check if any statuses need to be updated
     tools.log.info("Schedule code");
 
     const requiredDelay = tools.inputs.duration || 'PT10M';
+
+    tools.log.info(`Running with duration of ${requiredDelay}`);
 
     const prs = (await tools.github.pulls.list({
       ...tools.context.repo,
@@ -62,6 +62,7 @@ Toolkit.run(async tools => {
 
     }
   }
+
   tools.exit.success("Action finished");
 })
 
