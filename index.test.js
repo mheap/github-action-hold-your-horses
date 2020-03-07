@@ -48,7 +48,7 @@ describe('Hold Your Horses', () => {
     expect(tools.exit.success).toHaveBeenCalledWith('Action finished')
   })
 
-  fit('handles errors on opened PR', async () => {
+  it('handles errors on opened PR', async () => {
     mockStatus("pending", "Giving others the opportunity to review")
       .reply(422, {
         "message": "No commit found for SHA: 253187c4c33beddeb518eb331e4efaf41b2f4feb",
@@ -72,7 +72,7 @@ describe('Hold Your Horses', () => {
     expect(tools.exit.success).toHaveBeenCalledWith('Action finished')
   })
 
-  it('exits successfully', async () => {
+  fit('runs successfully with a user specified duration', async () => {
     await action(tools)
     expect(tools.exit.success).toHaveBeenCalled()
     expect(tools.exit.success).toHaveBeenCalledWith('Action finished')

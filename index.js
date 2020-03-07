@@ -48,6 +48,12 @@ Toolkit.run(async tools => {
       }
 
       const latestStatus = hyhStatuses[0];
+
+      if (latestStatus.state == "success") {
+        tools.log.info(`Check is already success for ${ref.merge}`);
+        continue;
+      }
+
       const updatedAt = Date.parse(latestStatus.updated_at);
 
       const duration = toSeconds( parse(requiredDelay) );
