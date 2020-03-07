@@ -20,7 +20,7 @@ Toolkit.run(async tools => {
     })).data;
 
     const shas = prs.map((pr) => {
-      return pr.head.sha
+      return pr.merge_commit_sha
     });
 
     // For each sha, check if it's due an update
