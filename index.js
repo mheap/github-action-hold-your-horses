@@ -5,6 +5,8 @@ Toolkit.run(async tools => {
   tools.github.repos.createStatus({
     ...tools.context.repo,
     sha: tools.context.sha,
-    state: "pending"
+    state: "pending",
+    context: "hold-your-horses",
+    description: "Giving others the opportunity to review"
   });
 })
