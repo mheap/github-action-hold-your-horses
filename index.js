@@ -49,6 +49,7 @@ Toolkit.run(async tools => {
       if (markAsSuccess) {
         tools.log.info(`Marking ${ref.to} as done`);
         await addSuccessStatusCheck(tools, ref.to);
+        await addSuccessStatusCheck(tools, ref.from);
       } else {
         tools.log.info(`Skipping ${ref.to}`);
       }
