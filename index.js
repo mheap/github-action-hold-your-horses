@@ -1,5 +1,5 @@
 const { Toolkit } = require('actions-toolkit')
-import {parse, end} from 'iso8601-duration';
+const { parse, end } = require('iso8601-duration');
 
 // Run your GitHub Action!
 Toolkit.run(async tools => {
