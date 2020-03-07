@@ -20,7 +20,7 @@ Toolkit.run(async tools => {
 
     // For each sha, check if it's due an update
     for (let ref of shas) {
-      const statuses = (await tools.github.listStatusesForRef({
+      const statuses = (await tools.github.repos.listStatusesForRef({
         ...tools.context.repo,
         ref
       })).data;
