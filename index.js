@@ -1,9 +1,11 @@
-const { Toolkit } = require('actions-toolkit')
-const { parse, toSeconds } = require('iso8601-duration');
+const { Toolkit } = require("actions-toolkit");
+const { parse, toSeconds } = require("iso8601-duration");
 
 // Run your GitHub Action!
 Toolkit.run(async tools => {
-  const isOpenedOrSynchronizedPr = (tools.context.event == "pull_request" && ['opened', 'synchronize'].indexOf(tools.context.payload.action) !== -1);
+  const isOpenedOrSynchronizedPr =
+    tools.context.event == "pull_request" &&
+    ["opened", "synchronize"].indexOf(tools.context.payload.action) !== -1;
 
   if (isOpenedOrSynchronizedPr) {
     try {
@@ -17,16 +19,18 @@ Toolkit.run(async tools => {
     // It's run on schedule, so let's check if any statuses need to be updated
     tools.log.info("Schedule code");
 
-    const requiredDelay = tools.inputs.duration || 'PT10M';
+    const requiredDelay = tools.inputs.duration || "PT10M";
 
     tools.log.info(`Running with duration of ${requiredDelay}`);
 
-    const prs = (await tools.github.pulls.list({
-      ...tools.context.repo,
-      state: "open"
-    })).data;
+    const prs = (
+      await tools.github.pulls.list({
+        ...tools.context.repo,
+        state: "open"
+      })
+    ).data;
 
-    const shas = prs.map((pr) => {
+    const shas = prs.map(pr => {
       return {
         merge: pr.merge_commit_sha,
         head: pr.head.sha
@@ -35,12 +39,14 @@ Toolkit.run(async tools => {
 
     // For each sha, check if it's due an update
     for (let ref of shas) {
-      const statuses = (await tools.github.repos.listStatusesForRef({
-        ...tools.context.repo,
-        ref: ref.merge
-      })).data;
+      const statuses = (
+        await tools.github.repos.listStatusesForRef({
+          ...tools.context.repo,
+          ref: ref.merge
+        })
+      ).data;
 
-      const hyhStatuses = statuses.filter((s) => s.context == 'hold-your-horses');
+      const hyhStatuses = statuses.filter(s => s.context == "hold-your-horses");
 
       if (hyhStatuses.length == 0) {
         tools.log.info(`No statuses for ${ref.merge}`);
@@ -56,10 +62,10 @@ Toolkit.run(async tools => {
 
       const updatedAt = Date.parse(latestStatus.updated_at);
 
-      const duration = toSeconds( parse(requiredDelay) );
-      const elapsed = Math.floor(((new Date) - updatedAt) / 1000);
+      const duration = toSeconds(parse(requiredDelay));
+      const elapsed = Math.floor((new Date() - updatedAt) / 1000);
 
-      const markAsSuccess = (elapsed > duration);
+      const markAsSuccess = elapsed > duration;
 
       if (markAsSuccess) {
         tools.log.info(`Marking ${ref.merge} as done`);
@@ -69,12 +75,11 @@ Toolkit.run(async tools => {
       } else {
         tools.log.info(`Skipping ${ref.merge} and ${ref.head}`);
       }
-
     }
   }
 
   tools.exit.success("Action finished");
-})
+});
 
 function addPendingStatusCheck(tools) {
   return tools.github.repos.createStatus({
