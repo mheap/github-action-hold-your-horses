@@ -6,9 +6,13 @@ Toolkit.run(async tools => {
   const isOpenedOrSynchronizedPr = (tools.context.event == "pull_request" && ['opened', 'synchronize'].indexOf(tools.context.payload.action) !== -1);
 
   if (isOpenedOrSynchronizedPr) {
-    tools.log.pending("Adding pending status check");
-    await addPendingStatusCheck(tools);
-    tools.log.complete("Added pending status check");
+    try {
+      tools.log.pending("Adding pending status check");
+      await addPendingStatusCheck(tools);
+      tools.log.complete("Added pending status check");
+    } catch (e) {
+      tools.exit.failure(e.message);
+    }
   } else {
     // It's run on schedule, so let's check if any statuses need to be updated
     tools.log.info("Schedule code");
