@@ -62,10 +62,17 @@ Toolkit.run(async tools => {
 
       const updatedAt = Date.parse(latestStatus.updated_at);
 
-      const duration = toSeconds(parse(requiredDelay));
+      let duration;
+      try {
+        duration = parse(requiredDelay);
+      } catch (e) {
+        tools.exit.failure(`Invalid duration provided: ${requiredDelay}`);
+        return;
+      }
+
       const elapsed = Math.floor((new Date() - updatedAt) / 1000);
 
-      const markAsSuccess = elapsed > duration;
+      const markAsSuccess = elapsed > toSeconds(duration);
 
       if (markAsSuccess) {
         tools.log.info(`Marking ${ref.merge} as done`);

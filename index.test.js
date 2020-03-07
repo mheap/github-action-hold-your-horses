@@ -94,15 +94,19 @@ describe("Hold Your Horses", () => {
     });
   });
 
+  it("runs successfully with the default duration", async () => {
+    restoreTest = scheduleTrigger(tools);
+    mockAllSuccessRequests();
+    await action(tools);
+    expect(tools.log.info).toHaveBeenCalledWith(
+      "Running with duration of PT10M"
+    );
+    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+  });
+
   it("runs successfully with a user specified duration", async () => {
     restoreTest = scheduleTrigger(tools, "PT3M");
-
-    mockOpenPulls();
-    mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
-
-    mockUpdateStatus("success", "Review time elapsed").reply(200);
-    mockUpdateStatus("success", "Review time elapsed", sha).reply(200);
-
+    mockAllSuccessRequests();
     await action(tools);
     expect(tools.log.info).toHaveBeenCalledWith(
       "Running with duration of PT3M"
@@ -110,19 +114,23 @@ describe("Hold Your Horses", () => {
     expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
   });
 
-  // Additional test cases
-  //
-  // Default duration
-  // User specified duration
   // Duration isn't parseable
-  // Duration elapsed
-  // Duration not elapsed
-  // Error updating merge commit status
-  // Error updating head commit status
-  // No statuses returned for ref
-  // No statuses returned for ref with hold-your-horses context
-  // Check is already successful
-  // updated_at isn't parseable
+  it("fails when the duration isn't parseable", async () => {
+    restoreTest = scheduleTrigger(tools, "invalid_duration");
+    mockAllSuccessRequests();
+    await action(tools);
+    expect(tools.exit.failure).toHaveBeenCalledWith(
+      "Invalid duration provided: invalid_duration"
+    );
+  });
+
+  it.todo("updates the status when the required duration has elapsed");
+  it.todo("skips the update when the required duration has not elapsed");
+  it.todo("handles errors when updating the merge commit status");
+  it.todo("handles errors when updating the head commit status");
+  it.todo("handles no statuses being present for the provided ref");
+  it.todo("handles statuses being returned, but none with the correct context");
+  it.todo("handles the most recent check already being a success");
 });
 
 function testEnv(tools, params) {
@@ -132,11 +140,16 @@ function testEnv(tools, params) {
 }
 
 function scheduleTrigger(tools, duration) {
-  return testEnv(tools, {
+  const opts = {
     GITHUB_EVENT_NAME: "schedule",
-    GITHUB_EVENT_PATH: `${__dirname}/fixtures/schedule.json`,
-    INPUT_DURATION: duration
-  });
+    GITHUB_EVENT_PATH: `${__dirname}/fixtures/schedule.json`
+  };
+
+  if (duration) {
+    opts["INPUT_DURATION"] = duration;
+  }
+
+  return testEnv(tools, opts);
 }
 
 function mockUpdateStatus(state, description, mockSha) {
@@ -182,4 +195,12 @@ function mockStatuses(states) {
       `/repos/mheap/test-repo-hyh-stream/commits/${merge_commit_sha}/statuses`
     )
     .reply(200, response);
+}
+
+function mockAllSuccessRequests() {
+  mockOpenPulls();
+  mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
+
+  mockUpdateStatus("success", "Review time elapsed").reply(200);
+  mockUpdateStatus("success", "Review time elapsed", sha).reply(200);
 }
