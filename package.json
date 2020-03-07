@@ -7,7 +7,8 @@
     "test": "jest"
   },
   "dependencies": {
-    "actions-toolkit": "^3.0.1"
+    "actions-toolkit": "^3.0.1",
+    "iso8601-duration": "^1.2.0"
   },
   "devDependencies": {
     "jest": "^25.1.0"

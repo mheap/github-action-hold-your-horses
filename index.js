@@ -1,4 +1,5 @@
 const { Toolkit } = require('actions-toolkit')
+import {parse, end} from 'iso8601-duration';
 
 // Run your GitHub Action!
 Toolkit.run(async tools => {
@@ -17,7 +18,27 @@ Toolkit.run(async tools => {
       return pr.head.sha
     });
 
-    console.log(shas);
+    // For each sha, check if it's due an update
+    for (let ref of shas) {
+      const statuses = (await tools.github.listStatusesForRef({
+        ...tools.context.repo,
+        ref
+      })).data;
+
+      const latestStatus = statuses.filter((s) => s.context == 'hold-your-horses')[0];
+      const updatedAt = Date.parse(latestStatus.updated_at);
+
+      const duration = toSeconds( parse('PT1H') );
+      const markAsSuccess = ((new Date) - updatedAt) > duration;
+
+      if (markAsSuccess) {
+        tools.log.info(`Marking ${ref} as done`);
+        await addSuccessStatusCheck(tools, ref);
+      } else {
+        tools.log.info(`Skipping ${ref}`);
+      }
+
+    }
   }
   tools.exit.success("Action finished");
 })
@@ -26,6 +47,16 @@ function addPendingStatusCheck(tools) {
   return tools.github.repos.createStatus({
     ...tools.context.repo,
     sha: tools.context.sha,
+    state: "pending",
+    context: "hold-your-horses",
+    description: "Giving others the opportunity to review"
+  });
+}
+
+function addSuccessStatusCheck(tools, sha) {
+  return tools.github.repos.createStatus({
+    ...tools.context.repo,
+    sha,
     state: "pending",
     context: "hold-your-horses",
     description: "Giving others the opportunity to review"
