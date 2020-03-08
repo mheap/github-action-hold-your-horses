@@ -30,6 +30,13 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         duration: 'PT1H'
+        trusted: mheap,other_user
 ```
 
 The duration is an ISO8601 duration. You can use `PT3M` (3 minutes), `PT5D` (5 days) or [any other supported duration](https://en.wikipedia.org/wiki/ISO_8601#Durations)
+
+The `trusted` input allows you to specify a list of usernames that can skip waiting for the minimum time. This can be useful for urgent bug fixes.
+
+## Skipping the wait
+
+Any users specified in the workflow's `trusted` input can add a comment to the pull request containing `/skipwait`. This will immediately change the status of the pull request to `success` and add a label of `hold-your-horses:skipped` so that you can filter any PRs that have been skipped at a later date.

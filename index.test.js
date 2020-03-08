@@ -50,6 +50,76 @@ describe("Hold Your Horses", () => {
     nock.cleanAll();
   });
 
+  describe(`On comment`, () => {
+    it(`does not trigger when the comment does not contain /skipwait`, async () => {
+      restoreTest = testEnv(tools, {
+        GITHUB_EVENT_NAME: "issue_comment",
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-invalid.json`
+      });
+
+      // No mocks as nothing should execute
+      await action(tools);
+      expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+    });
+
+    it(`does not trigger when /skipwait is not the first item in the comment`, async () => {
+      restoreTest = testEnv(tools, {
+        GITHUB_EVENT_NAME: "issue_comment",
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-invalid-command-after.json`
+      });
+
+      // No mocks as nothing should execute
+      await action(tools);
+      expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+    });
+
+    it(`responds that no-one is trusted to skip`, async () => {
+      restoreTest = testEnv(tools, {
+        GITHUB_EVENT_NAME: "issue_comment",
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-valid.json`
+      });
+
+      mockCommentAdded(
+        "Sorry, skipping the required wait time isn't enabled on this repo"
+      );
+
+      await action(tools);
+      expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+    });
+
+    it(`responds that the current user is not allowed to skip`, async () => {
+      restoreTest = testEnv(tools, {
+        GITHUB_EVENT_NAME: "issue_comment",
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-valid.json`,
+        INPUT_TRUSTED: "oneuser,another_user"
+      });
+
+      mockCommentAdded(
+        "Sorry, you're not in the list of approved users. You can ask one of the following people to comment for you if needed: \n * oneuser\n * another_user"
+      );
+
+      await action(tools);
+      expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+    });
+
+    it(`marks all checks as done and adds a label`, async () => {
+      restoreTest = testEnv(tools, {
+        GITHUB_EVENT_NAME: "issue_comment",
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-valid.json`,
+        INPUT_TRUSTED: "mheap"
+      });
+
+      mockGetSinglePr(8);
+      mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
+      mockUpdateStatus("success", "Review time elapsed").reply(200);
+      mockUpdateStatus("success", "Review time elapsed", sha).reply(200);
+      mockLabelAdded(["hold-your-horses:skipped"]);
+
+      await action(tools);
+      expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+    });
+  });
+
   ["opened", "synchronize"].forEach(event => {
     describe(`On PR ${event}`, () => {
       it(`runs to completion`, async () => {
@@ -337,4 +407,31 @@ function mockAllSuccessRequests() {
 
   mockUpdateStatus("success", "Review time elapsed").reply(200);
   mockUpdateStatus("success", "Review time elapsed", sha).reply(200);
+}
+
+function mockCommentAdded(body) {
+  nock("https://api.github.com")
+    .post("/repos/mheap/test-repo-hyh-stream/issues/8/comments", {
+      body
+    })
+    .reply(200);
+}
+
+function mockGetSinglePr(number) {
+  nock("https://api.github.com")
+    .get(`/repos/mheap/test-repo-hyh-stream/pulls/${number}`)
+    .reply(200, {
+      merge_commit_sha,
+      head: {
+        sha
+      }
+    });
+}
+
+function mockLabelAdded(labels) {
+  nock("https://api.github.com")
+    .post("/repos/mheap/test-repo-hyh-stream/issues/8/labels", {
+      labels
+    })
+    .reply(200);
 }
