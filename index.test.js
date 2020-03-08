@@ -51,209 +51,219 @@ describe("Hold Your Horses", () => {
   });
 
   ["opened", "synchronize"].forEach(event => {
-    it(`runs to completion on PR ${event}`, async () => {
-      restoreTest = testEnv(tools, {
-        GITHUB_EVENT_NAME: "pull_request",
-        GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`
+    describe(`On PR ${event}`, () => {
+      it(`runs to completion`, async () => {
+        restoreTest = testEnv(tools, {
+          GITHUB_EVENT_NAME: "pull_request",
+          GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`
+        });
+
+        mockUpdateStatus(
+          "pending",
+          "Giving others the opportunity to review"
+        ).reply(200);
+
+        await action(tools);
+        expect(tools.log.pending).toHaveBeenCalledWith(
+          "Adding pending status check"
+        );
+        expect(tools.log.complete).toHaveBeenCalledWith(
+          "Added pending status check"
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
       });
 
-      mockUpdateStatus(
-        "pending",
-        "Giving others the opportunity to review"
-      ).reply(200);
+      it(`handles errors`, async () => {
+        restoreTest = testEnv(tools, {
+          GITHUB_EVENT_NAME: "pull_request",
+          GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`
+        });
 
-      await action(tools);
-      expect(tools.log.pending).toHaveBeenCalledWith(
-        "Adding pending status check"
-      );
-      expect(tools.log.complete).toHaveBeenCalledWith(
-        "Added pending status check"
-      );
-      expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+        mockUpdateStatus(
+          "pending",
+          "Giving others the opportunity to review"
+        ).reply(422, {
+          message: `No commit found for SHA: ${merge_commit_sha}`,
+          documentation_url:
+            "https://developer.github.com/v3/repos/statuses/#create-a-status"
+        });
+
+        await action(tools);
+        expect(tools.log.pending).toHaveBeenCalledWith(
+          "Adding pending status check"
+        );
+        expect(tools.exit.failure).toHaveBeenCalledWith(
+          `No commit found for SHA: ${merge_commit_sha}`
+        );
+      });
     });
+  });
 
-    it(`handles errors on PR ${event}`, async () => {
-      restoreTest = testEnv(tools, {
-        GITHUB_EVENT_NAME: "pull_request",
-        GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`
+  describe(`On schedule`, () => {
+    describe(`Setting the duration`, () => {
+      it("has a default duration", async () => {
+        restoreTest = scheduleTrigger(tools);
+        mockAllSuccessRequests();
+        await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          "Running with duration of PT10M"
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
       });
 
-      mockUpdateStatus(
-        "pending",
-        "Giving others the opportunity to review"
-      ).reply(422, {
-        message: `No commit found for SHA: ${merge_commit_sha}`,
-        documentation_url:
-          "https://developer.github.com/v3/repos/statuses/#create-a-status"
+      it("accepts a user specified duration", async () => {
+        restoreTest = scheduleTrigger(tools, "PT3M");
+        mockAllSuccessRequests();
+        await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          "Running with duration of PT3M"
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
       });
 
-      await action(tools);
-      expect(tools.log.pending).toHaveBeenCalledWith(
-        "Adding pending status check"
-      );
-      expect(tools.exit.failure).toHaveBeenCalledWith(
-        `No commit found for SHA: ${merge_commit_sha}`
-      );
-    });
-  });
-
-  it("runs successfully with the default duration", async () => {
-    restoreTest = scheduleTrigger(tools);
-    mockAllSuccessRequests();
-    await action(tools);
-    expect(tools.log.info).toHaveBeenCalledWith(
-      "Running with duration of PT10M"
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
-
-  it("runs successfully with a user specified duration", async () => {
-    restoreTest = scheduleTrigger(tools, "PT3M");
-    mockAllSuccessRequests();
-    await action(tools);
-    expect(tools.log.info).toHaveBeenCalledWith(
-      "Running with duration of PT3M"
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
-
-  // Duration isn't parseable
-  it("fails when the duration isn't parseable", async () => {
-    restoreTest = scheduleTrigger(tools, "invalid_duration");
-    mockAllSuccessRequests();
-    await action(tools);
-    expect(tools.exit.failure).toHaveBeenCalledWith(
-      "Invalid duration provided: invalid_duration"
-    );
-  });
-
-  it("updates the status when the required duration has elapsed", async () => {
-    restoreTest = scheduleTrigger(tools, "PT10M");
-    // The pending event occured at 2020-03-07T16:50:47Z
-    // which means for the duration to have elapsed, we should mock the
-    // current time to be more than 10 minutes later
-    MockDate.set("2020-03-07T17:02:12Z");
-
-    // Mock all the other requests
-    mockAllSuccessRequests();
-
-    await action(tools);
-    expect(tools.log.info).toHaveBeenCalledWith(
-      `Marking ${merge_commit_sha} as done`
-    );
-    expect(tools.log.info).toHaveBeenCalledWith(`Marking ${sha} as done`);
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
-
-  it("skips the update when the required duration has not elapsed", async () => {
-    restoreTest = scheduleTrigger(tools, "PT10M");
-    // The pending event occured at 2020-03-07T16:50:47Z
-    // which means for the duration to NOT have elapsed, we should mock the
-    // current time to be less than 10 minutes later
-    MockDate.set("2020-03-07T16:53:12Z");
-
-    // Mock all the other requests
-    mockAllSuccessRequests();
-
-    await action(tools);
-    expect(tools.log.info).toHaveBeenCalledWith(
-      `Skipping ${merge_commit_sha} and ${sha}`
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
-
-  it("handles errors when updating the merge commit status to success", async () => {
-    restoreTest = scheduleTrigger(tools);
-
-    mockOpenPulls();
-    mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
-
-    mockUpdateStatus("success", "Review time elapsed").reply(422, {
-      message: `No commit found for SHA: ${merge_commit_sha}`,
-      documentation_url:
-        "https://developer.github.com/v3/repos/statuses/#create-a-status"
+      // Duration isn't parseable
+      it("fails when the duration isn't parseable", async () => {
+        restoreTest = scheduleTrigger(tools, "invalid_duration");
+        mockAllSuccessRequests();
+        await action(tools);
+        expect(tools.exit.failure).toHaveBeenCalledWith(
+          "Invalid duration provided: invalid_duration"
+        );
+      });
     });
 
-    await action(tools);
-    expect(tools.log.error).toHaveBeenCalledWith(
-      `No commit found for SHA: ${merge_commit_sha}`
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
+    describe(`Changing check state`, () => {
+      it("updates the status when the required duration has elapsed", async () => {
+        restoreTest = scheduleTrigger(tools, "PT10M");
+        // The pending event occured at 2020-03-07T16:50:47Z
+        // which means for the duration to have elapsed, we should mock the
+        // current time to be more than 10 minutes later
+        MockDate.set("2020-03-07T17:02:12Z");
 
-  it("handles errors when updating the head commit status to success", async () => {
-    restoreTest = scheduleTrigger(tools);
+        // Mock all the other requests
+        mockAllSuccessRequests();
 
-    mockOpenPulls();
-    mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
+        await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          `Marking ${merge_commit_sha} as done`
+        );
+        expect(tools.log.info).toHaveBeenCalledWith(`Marking ${sha} as done`);
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+      });
 
-    mockUpdateStatus("success", "Review time elapsed").reply(200);
-    mockUpdateStatus("success", "Review time elapsed", sha).reply(422, {
-      message: `No commit found for SHA: ${sha}`,
-      documentation_url:
-        "https://developer.github.com/v3/repos/statuses/#create-a-status"
+      it("skips the update when the required duration has not elapsed", async () => {
+        restoreTest = scheduleTrigger(tools, "PT10M");
+        // The pending event occured at 2020-03-07T16:50:47Z
+        // which means for the duration to NOT have elapsed, we should mock the
+        // current time to be less than 10 minutes later
+        MockDate.set("2020-03-07T16:53:12Z");
+
+        // Mock all the other requests
+        mockAllSuccessRequests();
+
+        await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          `Skipping ${merge_commit_sha} and ${sha}`
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+      });
+
+      it("handles the most recent check already being a success", async () => {
+        restoreTest = scheduleTrigger(tools);
+
+        mockOpenPulls();
+        mockStatuses([
+          ["success", "2020-03-07T16:54:12Z"],
+          ["pending", "2020-03-07T16:50:47Z"]
+        ]);
+
+        await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          `Check is already success for ${merge_commit_sha}`
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+      });
     });
 
-    await action(tools);
-    expect(tools.log.error).toHaveBeenCalledWith(
-      `No commit found for SHA: ${sha}`
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
+    describe("Unexpected cases", () => {
+      it("handles errors when updating the merge commit status to success", async () => {
+        restoreTest = scheduleTrigger(tools);
 
-  it("handles no statuses being present for the provided ref", async () => {
-    restoreTest = scheduleTrigger(tools);
+        mockOpenPulls();
+        mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
 
-    mockOpenPulls();
-    mockStatuses([]);
+        mockUpdateStatus("success", "Review time elapsed").reply(422, {
+          message: `No commit found for SHA: ${merge_commit_sha}`,
+          documentation_url:
+            "https://developer.github.com/v3/repos/statuses/#create-a-status"
+        });
 
-    await action(tools);
-    expect(tools.log.info).toHaveBeenCalledWith(`Found 0 statuses`);
-    expect(tools.log.info).toHaveBeenCalledWith(
-      `No statuses for ${merge_commit_sha}`
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
+        await action(tools);
+        expect(tools.log.error).toHaveBeenCalledWith(
+          `No commit found for SHA: ${merge_commit_sha}`
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+      });
 
-  it("handles statuses being returned, but none with the correct context", async () => {
-    restoreTest = scheduleTrigger(tools);
+      it("handles errors when updating the head commit status to success", async () => {
+        restoreTest = scheduleTrigger(tools);
 
-    mockOpenPulls();
-    // Mock Statuses
-    nock("https://api.github.com")
-      .get(
-        `/repos/mheap/test-repo-hyh-stream/commits/${merge_commit_sha}/statuses`
-      )
-      .reply(200, [
-        {
-          state: "success",
-          context: "some-other-check",
-          updated_at: "2018-01-01T00:00:00~"
-        }
-      ]);
+        mockOpenPulls();
+        mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
 
-    await action(tools);
-    expect(tools.log.info).toHaveBeenCalledWith(`Found 1 statuses`);
-    expect(tools.log.info).toHaveBeenCalledWith(
-      `No statuses for ${merge_commit_sha}`
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
-  });
+        mockUpdateStatus("success", "Review time elapsed").reply(200);
+        mockUpdateStatus("success", "Review time elapsed", sha).reply(422, {
+          message: `No commit found for SHA: ${sha}`,
+          documentation_url:
+            "https://developer.github.com/v3/repos/statuses/#create-a-status"
+        });
 
-  it("handles the most recent check already being a success", async () => {
-    restoreTest = scheduleTrigger(tools);
+        await action(tools);
+        expect(tools.log.error).toHaveBeenCalledWith(
+          `No commit found for SHA: ${sha}`
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+      });
 
-    mockOpenPulls();
-    mockStatuses([
-      ["success", "2020-03-07T16:54:12Z"],
-      ["pending", "2020-03-07T16:50:47Z"]
-    ]);
+      it("handles no statuses being present for the provided ref", async () => {
+        restoreTest = scheduleTrigger(tools);
 
-    await action(tools);
-    expect(tools.log.info).toHaveBeenCalledWith(
-      `Check is already success for ${merge_commit_sha}`
-    );
-    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+        mockOpenPulls();
+        mockStatuses([]);
+
+        await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(`Found 0 statuses`);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          `No statuses for ${merge_commit_sha}`
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+      });
+
+      it("handles statuses being returned, but none with the correct context", async () => {
+        restoreTest = scheduleTrigger(tools);
+
+        mockOpenPulls();
+        // Mock Statuses
+        nock("https://api.github.com")
+          .get(
+            `/repos/mheap/test-repo-hyh-stream/commits/${merge_commit_sha}/statuses`
+          )
+          .reply(200, [
+            {
+              state: "success",
+              context: "some-other-check",
+              updated_at: "2018-01-01T00:00:00~"
+            }
+          ]);
+
+        await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(`Found 1 statuses`);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          `No statuses for ${merge_commit_sha}`
+        );
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+      });
+    });
   });
 });
 
