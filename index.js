@@ -7,6 +7,12 @@ Toolkit.run(async tools => {
     tools.context.event == "pull_request" &&
     ["opened", "synchronize"].indexOf(tools.context.payload.action) !== -1;
 
+  const isPrComment =
+    tools.context.event == "issue_comment" &&
+    tools.context.payload.action == "created";
+
+  const isScheduled = tools.context.event == "schedule";
+
   if (isOpenedOrSynchronizedPr) {
     try {
       tools.log.pending("Adding pending status check");
@@ -15,7 +21,11 @@ Toolkit.run(async tools => {
     } catch (e) {
       tools.exit.failure(e.message);
     }
-  } else {
+  } else if (isPrComment) {
+    tools.command("skipwait", async (args, match) => {
+      console.log(tools.context.payload);
+    });
+  } else if (isScheduled) {
     // It's run on schedule, so let's check if any statuses need to be updated
     tools.log.info("Schedule code");
 
@@ -87,6 +97,8 @@ Toolkit.run(async tools => {
         tools.log.info(`Skipping ${ref.merge} and ${ref.head}`);
       }
     }
+  } else {
+    tools.exit.failure(`Unknown event: ${tools.context.event}`);
   }
 
   tools.exit.success("Action finished");
