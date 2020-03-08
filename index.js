@@ -46,6 +46,7 @@ Toolkit.run(async tools => {
         })
       ).data;
 
+      tools.log.info(`Found ${statuses.length} statuses`);
       const hyhStatuses = statuses.filter(s => s.context == "hold-your-horses");
 
       if (hyhStatuses.length == 0) {
@@ -70,15 +71,18 @@ Toolkit.run(async tools => {
         return;
       }
 
-      const elapsed = Math.floor((new Date() - updatedAt) / 1000);
-
+      const elapsed = Math.floor((Date.now() - updatedAt) / 1000);
       const markAsSuccess = elapsed > toSeconds(duration);
 
       if (markAsSuccess) {
-        tools.log.info(`Marking ${ref.merge} as done`);
-        await addSuccessStatusCheck(tools, ref.merge);
-        tools.log.info(`Marking ${ref.head} as done`);
-        await addSuccessStatusCheck(tools, ref.head);
+        try {
+          tools.log.info(`Marking ${ref.merge} as done`);
+          await addSuccessStatusCheck(tools, ref.merge);
+          tools.log.info(`Marking ${ref.head} as done`);
+          await addSuccessStatusCheck(tools, ref.head);
+        } catch (e) {
+          tools.log.error(e.message);
+        }
       } else {
         tools.log.info(`Skipping ${ref.merge} and ${ref.head}`);
       }

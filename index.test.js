@@ -2,8 +2,8 @@ const { Toolkit } = require("actions-toolkit");
 const mockedEnv = require("mocked-env");
 const nock = require("nock");
 nock.disableNetConnect();
+var MockDate = require("mockdate");
 
-// Reused variables
 const merge_commit_sha = "253187c4c33beddeb518eb331e4efaf41b2f4feb";
 const sha = "fe4f4ff2f32bc41d04757bfbae347f8be189d091";
 
@@ -38,6 +38,7 @@ describe("Hold Your Horses", () => {
     tools.exit.failure = jest.fn();
 
     tools.log.info = jest.fn();
+    tools.log.error = jest.fn();
     tools.log.pending = jest.fn();
     tools.log.complete = jest.fn();
   });
@@ -45,6 +46,8 @@ describe("Hold Your Horses", () => {
   afterEach(() => {
     restore();
     restoreTest();
+    MockDate.reset();
+    nock.cleanAll();
   });
 
   ["opened", "synchronize"].forEach(event => {
@@ -124,13 +127,134 @@ describe("Hold Your Horses", () => {
     );
   });
 
-  it.todo("updates the status when the required duration has elapsed");
-  it.todo("skips the update when the required duration has not elapsed");
-  it.todo("handles errors when updating the merge commit status");
-  it.todo("handles errors when updating the head commit status");
-  it.todo("handles no statuses being present for the provided ref");
-  it.todo("handles statuses being returned, but none with the correct context");
-  it.todo("handles the most recent check already being a success");
+  it("updates the status when the required duration has elapsed", async () => {
+    restoreTest = scheduleTrigger(tools, "PT10M");
+    // The pending event occured at 2020-03-07T16:50:47Z
+    // which means for the duration to have elapsed, we should mock the
+    // current time to be more than 10 minutes later
+    MockDate.set("2020-03-07T17:02:12Z");
+
+    // Mock all the other requests
+    mockAllSuccessRequests();
+
+    await action(tools);
+    expect(tools.log.info).toHaveBeenCalledWith(
+      `Marking ${merge_commit_sha} as done`
+    );
+    expect(tools.log.info).toHaveBeenCalledWith(`Marking ${sha} as done`);
+    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+  });
+
+  it("skips the update when the required duration has not elapsed", async () => {
+    restoreTest = scheduleTrigger(tools, "PT10M");
+    // The pending event occured at 2020-03-07T16:50:47Z
+    // which means for the duration to NOT have elapsed, we should mock the
+    // current time to be less than 10 minutes later
+    MockDate.set("2020-03-07T16:53:12Z");
+
+    // Mock all the other requests
+    mockAllSuccessRequests();
+
+    await action(tools);
+    expect(tools.log.info).toHaveBeenCalledWith(
+      `Skipping ${merge_commit_sha} and ${sha}`
+    );
+    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+  });
+
+  it("handles errors when updating the merge commit status to success", async () => {
+    restoreTest = scheduleTrigger(tools);
+
+    mockOpenPulls();
+    mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
+
+    mockUpdateStatus("success", "Review time elapsed").reply(422, {
+      message: `No commit found for SHA: ${merge_commit_sha}`,
+      documentation_url:
+        "https://developer.github.com/v3/repos/statuses/#create-a-status"
+    });
+
+    await action(tools);
+    expect(tools.log.error).toHaveBeenCalledWith(
+      `No commit found for SHA: ${merge_commit_sha}`
+    );
+    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+  });
+
+  it("handles errors when updating the head commit status to success", async () => {
+    restoreTest = scheduleTrigger(tools);
+
+    mockOpenPulls();
+    mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
+
+    mockUpdateStatus("success", "Review time elapsed").reply(200);
+    mockUpdateStatus("success", "Review time elapsed", sha).reply(422, {
+      message: `No commit found for SHA: ${sha}`,
+      documentation_url:
+        "https://developer.github.com/v3/repos/statuses/#create-a-status"
+    });
+
+    await action(tools);
+    expect(tools.log.error).toHaveBeenCalledWith(
+      `No commit found for SHA: ${sha}`
+    );
+    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+  });
+
+  it("handles no statuses being present for the provided ref", async () => {
+    restoreTest = scheduleTrigger(tools);
+
+    mockOpenPulls();
+    mockStatuses([]);
+
+    await action(tools);
+    expect(tools.log.info).toHaveBeenCalledWith(`Found 0 statuses`);
+    expect(tools.log.info).toHaveBeenCalledWith(
+      `No statuses for ${merge_commit_sha}`
+    );
+    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+  });
+
+  it("handles statuses being returned, but none with the correct context", async () => {
+    restoreTest = scheduleTrigger(tools);
+
+    mockOpenPulls();
+    // Mock Statuses
+    nock("https://api.github.com")
+      .get(
+        `/repos/mheap/test-repo-hyh-stream/commits/${merge_commit_sha}/statuses`
+      )
+      .reply(200, [
+        {
+          state: "success",
+          context: "some-other-check",
+          updated_at: "2018-01-01T00:00:00~"
+        }
+      ]);
+
+    await action(tools);
+    expect(tools.log.info).toHaveBeenCalledWith(`Found 1 statuses`);
+    expect(tools.log.info).toHaveBeenCalledWith(
+      `No statuses for ${merge_commit_sha}`
+    );
+    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+  });
+
+  it("handles the most recent check already being a success", async () => {
+    restoreTest = scheduleTrigger(tools);
+
+    mockOpenPulls();
+    mockStatuses([
+      ["success", "2020-03-07T16:54:12Z"],
+      ["pending", "2020-03-07T16:50:47Z"]
+    ]);
+
+    await action(tools);
+    expect(tools.log.info).toHaveBeenCalledWith(
+      `Check is already success for ${merge_commit_sha}`
+    );
+    expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+  });
 });
 
 function testEnv(tools, params) {
