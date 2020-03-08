@@ -32,4 +32,4 @@ jobs:
         duration: 'PT1H'
 ```
 
-The duration is an ISO8601 duration. You can use `PT3M` (3 minutes), `P5D` (5 days) or [any other supported duration](https://en.wikipedia.org/wiki/ISO_8601#Durations)
+The duration is an ISO8601 duration. You can use `PT3M` (3 minutes), `PT5D` (5 days) or [any other supported duration](https://en.wikipedia.org/wiki/ISO_8601#Durations)
