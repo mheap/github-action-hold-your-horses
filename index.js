@@ -2,7 +2,7 @@ const { Toolkit } = require("actions-toolkit");
 const { parse, toSeconds } = require("iso8601-duration");
 
 // Run your GitHub Action!
-Toolkit.run(async tools => {
+Toolkit.run(async (tools) => {
   const isOpenedOrSynchronizedPr =
     tools.context.event == "pull_request" &&
     ["opened", "synchronize"].includes(tools.context.payload.action);
@@ -27,8 +27,8 @@ Toolkit.run(async tools => {
       const trusted = tools.inputs.trusted || "";
       const allowed = trusted
         .split(",")
-        .map(n => n.toLowerCase())
-        .filter(n => n);
+        .map((n) => n.toLowerCase())
+        .filter((n) => n);
       const currentUser = tools.context.actor.toLowerCase();
 
       // If they are, update the checks immediately
@@ -36,13 +36,13 @@ Toolkit.run(async tools => {
         const pr = (
           await tools.github.pulls.get({
             ...tools.context.repo,
-            pull_number: tools.context.issue.number
+            pull_number: tools.context.issue.number,
           })
         ).data;
 
         const ref = {
           merge: pr.merge_commit_sha,
-          head: pr.head.sha
+          head: pr.head.sha,
         };
 
         await updateShas(tools, ref, "PT0M"); // We require zero wait when forcing
@@ -51,7 +51,7 @@ Toolkit.run(async tools => {
         tools.github.issues.addLabels({
           ...tools.context.repo,
           issue_number: tools.context.issue.number,
-          labels: ["hold-your-horses:skipped"]
+          labels: ["hold-your-horses:skipped"],
         });
       } else {
         // Otherwise let them know that they're not in the list, and how to resolve it
@@ -60,14 +60,14 @@ Toolkit.run(async tools => {
           body =
             "Sorry, skipping the required wait time isn't enabled on this repo";
         } else {
-          const nameList = allowed.map(name => `\n * ${name}`).join("");
+          const nameList = allowed.map((name) => `\n * ${name}`).join("");
           body = `Sorry, you're not in the list of approved users. You can ask one of the following people to comment for you if needed: ${nameList}`;
         }
 
         await tools.github.issues.createComment({
           ...tools.context.repo,
           issue_number: tools.context.issue.number,
-          body
+          body,
         });
       }
     });
@@ -75,27 +75,48 @@ Toolkit.run(async tools => {
     // It's run on schedule, so let's check if any statuses need to be updated
     tools.log.info("Schedule code");
 
-    const requiredDelay = tools.inputs.duration || "PT10M";
-
-    tools.log.info(`Running with duration of ${requiredDelay}`);
+    const labelDurations = tools.inputs.label_durations
+      .split(",")
+      .reduce((labels, current) => {
+        let [label, duration] = current.split("=");
+        labels[label] = duration;
+        return labels;
+      }, {});
 
     const prs = (
       await tools.github.pulls.list({
         ...tools.context.repo,
-        state: "open"
+        state: "open",
       })
     ).data;
 
-    const shas = prs.map(pr => {
+    const shas = prs.map((pr) => {
+      // If there are any label durations, check if the PR is labelled
+      // and use the first match
+      const labels = pr.labels;
+      let labelDuration = null;
+
+      for (let label in labelDurations) {
+        let matchingLabel = labels.find((l) => l.name == label);
+        if (matchingLabel) {
+          labelDuration = labelDurations[label];
+          break;
+        }
+      }
+
+      const requiredDelay = labelDuration || tools.inputs.duration || "PT10M";
+
       return {
         merge: pr.merge_commit_sha,
-        head: pr.head.sha
+        head: pr.head.sha,
+        delay: requiredDelay,
       };
     });
 
     // For each sha, check if it's due an update
     for (let ref of shas) {
-      await updateShas(tools, ref, requiredDelay);
+      tools.log.info(`Running with duration of ${ref.delay}`);
+      await updateShas(tools, ref, ref.delay);
     }
   } else {
     tools.exit.failure(`Unknown event: ${tools.context.event}`);
@@ -110,7 +131,7 @@ function addPendingStatusCheck(tools) {
     sha: tools.context.sha,
     state: "pending",
     context: "hold-your-horses",
-    description: "Giving others the opportunity to review"
+    description: "Giving others the opportunity to review",
   });
 }
 
@@ -120,7 +141,7 @@ function addSuccessStatusCheck(tools, sha) {
     sha,
     state: "success",
     context: "hold-your-horses",
-    description: "Review time elapsed"
+    description: "Review time elapsed",
   });
 }
 
@@ -128,12 +149,12 @@ async function updateShas(tools, ref, requiredDelay) {
   const statuses = (
     await tools.github.repos.listStatusesForRef({
       ...tools.context.repo,
-      ref: ref.merge
+      ref: ref.merge,
     })
   ).data;
 
   tools.log.info(`Found ${statuses.length} statuses`);
-  const hyhStatuses = statuses.filter(s => s.context == "hold-your-horses");
+  const hyhStatuses = statuses.filter((s) => s.context == "hold-your-horses");
 
   if (hyhStatuses.length == 0) {
     tools.log.info(`No statuses for ${ref.merge}`);
