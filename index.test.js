@@ -9,7 +9,7 @@ const sha = "fe4f4ff2f32bc41d04757bfbae347f8be189d091";
 
 describe("Hold Your Horses", () => {
   let action, tools, restore, restoreTest;
-  Toolkit.run = jest.fn(actionFn => {
+  Toolkit.run = jest.fn((actionFn) => {
     action = actionFn;
   });
   require(".");
@@ -23,11 +23,11 @@ describe("Hold Your Horses", () => {
       GITHUB_SHA: merge_commit_sha,
       GITHUB_REPOSITORY: "mheap/test-repo-hyh-stream",
       GITHUB_EVENT_NAME: "",
-      GITHUB_EVENT_PATH: ""
+      GITHUB_EVENT_PATH: "",
     });
 
     tools = new Toolkit();
-    tools.context.loadPerTestEnv = function() {
+    tools.context.loadPerTestEnv = function () {
       this.payload = process.env.GITHUB_EVENT_PATH
         ? require(process.env.GITHUB_EVENT_PATH)
         : {};
@@ -54,7 +54,7 @@ describe("Hold Your Horses", () => {
     it(`does not trigger when the comment does not contain /skipwait`, async () => {
       restoreTest = testEnv(tools, {
         GITHUB_EVENT_NAME: "issue_comment",
-        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-invalid.json`
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-invalid.json`,
       });
 
       // No mocks as nothing should execute
@@ -65,7 +65,7 @@ describe("Hold Your Horses", () => {
     it(`does not trigger when /skipwait is not the first item in the comment`, async () => {
       restoreTest = testEnv(tools, {
         GITHUB_EVENT_NAME: "issue_comment",
-        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-invalid-command-after.json`
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-invalid-command-after.json`,
       });
 
       // No mocks as nothing should execute
@@ -76,7 +76,7 @@ describe("Hold Your Horses", () => {
     it(`responds that no-one is trusted to skip`, async () => {
       restoreTest = testEnv(tools, {
         GITHUB_EVENT_NAME: "issue_comment",
-        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-valid.json`
+        GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-valid.json`,
       });
 
       mockCommentAdded(
@@ -91,7 +91,7 @@ describe("Hold Your Horses", () => {
       restoreTest = testEnv(tools, {
         GITHUB_EVENT_NAME: "issue_comment",
         GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-valid.json`,
-        INPUT_TRUSTED: "oneuser,another_user"
+        INPUT_TRUSTED: "oneuser,another_user",
       });
 
       mockCommentAdded(
@@ -106,7 +106,7 @@ describe("Hold Your Horses", () => {
       restoreTest = testEnv(tools, {
         GITHUB_EVENT_NAME: "issue_comment",
         GITHUB_EVENT_PATH: `${__dirname}/fixtures/issue-comment-valid.json`,
-        INPUT_TRUSTED: "mheap"
+        INPUT_TRUSTED: "mheap",
       });
 
       mockGetSinglePr(8);
@@ -120,12 +120,12 @@ describe("Hold Your Horses", () => {
     });
   });
 
-  ["opened", "synchronize"].forEach(event => {
+  ["opened", "synchronize"].forEach((event) => {
     describe(`On PR ${event}`, () => {
       it(`runs to completion`, async () => {
         restoreTest = testEnv(tools, {
           GITHUB_EVENT_NAME: "pull_request",
-          GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`
+          GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`,
         });
 
         mockUpdateStatus(
@@ -146,7 +146,7 @@ describe("Hold Your Horses", () => {
       it(`handles errors`, async () => {
         restoreTest = testEnv(tools, {
           GITHUB_EVENT_NAME: "pull_request",
-          GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`
+          GITHUB_EVENT_PATH: `${__dirname}/fixtures/pr-${event}.json`,
         });
 
         mockUpdateStatus(
@@ -155,7 +155,7 @@ describe("Hold Your Horses", () => {
         ).reply(422, {
           message: `No commit found for SHA: ${merge_commit_sha}`,
           documentation_url:
-            "https://developer.github.com/v3/repos/statuses/#create-a-status"
+            "https://developer.github.com/v3/repos/statuses/#create-a-status",
         });
 
         await action(tools);
@@ -203,7 +203,7 @@ describe("Hold Your Horses", () => {
     });
 
     describe(`Changing check state`, () => {
-      it("updates the status when the required duration has elapsed", async () => {
+      it("updates the status when the required duration has elapsed (default)", async () => {
         restoreTest = scheduleTrigger(tools, "PT10M");
         // The pending event occured at 2020-03-07T16:50:47Z
         // which means for the duration to have elapsed, we should mock the
@@ -214,6 +214,39 @@ describe("Hold Your Horses", () => {
         mockAllSuccessRequests();
 
         await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          `Marking ${merge_commit_sha} as done`
+        );
+        expect(tools.log.info).toHaveBeenCalledWith(`Marking ${sha} as done`);
+        expect(tools.exit.success).toHaveBeenCalledWith("Action finished");
+      });
+
+      it("chooses the first date based label when a custom duration is enabled", async () => {
+        restoreTest = scheduleTrigger(
+          tools,
+          "PT10M",
+          "bug=PT30M,feature=PT45M"
+        );
+
+        // The pending event occured at 2020-03-07T16:50:47Z
+        // which means for the duration to have elapsed, we should mock the
+        // current time to be more than 30 minutes later
+        MockDate.set("2020-03-07T17:22:12Z");
+
+        // Mock all the other requests
+        mockAllSuccessRequests([
+          {
+            name: "bug",
+          },
+          {
+            name: "feature",
+          },
+        ]);
+
+        await action(tools);
+        expect(tools.log.info).toHaveBeenCalledWith(
+          `Running with duration of PT30M`
+        );
         expect(tools.log.info).toHaveBeenCalledWith(
           `Marking ${merge_commit_sha} as done`
         );
@@ -244,7 +277,7 @@ describe("Hold Your Horses", () => {
         mockOpenPulls();
         mockStatuses([
           ["success", "2020-03-07T16:54:12Z"],
-          ["pending", "2020-03-07T16:50:47Z"]
+          ["pending", "2020-03-07T16:50:47Z"],
         ]);
 
         await action(tools);
@@ -265,7 +298,7 @@ describe("Hold Your Horses", () => {
         mockUpdateStatus("success", "Review time elapsed").reply(422, {
           message: `No commit found for SHA: ${merge_commit_sha}`,
           documentation_url:
-            "https://developer.github.com/v3/repos/statuses/#create-a-status"
+            "https://developer.github.com/v3/repos/statuses/#create-a-status",
         });
 
         await action(tools);
@@ -285,7 +318,7 @@ describe("Hold Your Horses", () => {
         mockUpdateStatus("success", "Review time elapsed", sha).reply(422, {
           message: `No commit found for SHA: ${sha}`,
           documentation_url:
-            "https://developer.github.com/v3/repos/statuses/#create-a-status"
+            "https://developer.github.com/v3/repos/statuses/#create-a-status",
         });
 
         await action(tools);
@@ -322,8 +355,8 @@ describe("Hold Your Horses", () => {
             {
               state: "success",
               context: "some-other-check",
-              updated_at: "2018-01-01T00:00:00~"
-            }
+              updated_at: "2018-01-01T00:00:00~",
+            },
           ]);
 
         await action(tools);
@@ -343,14 +376,18 @@ function testEnv(tools, params) {
   return r;
 }
 
-function scheduleTrigger(tools, duration) {
+function scheduleTrigger(tools, duration, labels) {
   const opts = {
     GITHUB_EVENT_NAME: "schedule",
-    GITHUB_EVENT_PATH: `${__dirname}/fixtures/schedule.json`
+    GITHUB_EVENT_PATH: `${__dirname}/fixtures/schedule.json`,
   };
 
   if (duration) {
     opts["INPUT_DURATION"] = duration;
+  }
+
+  if (labels) {
+    opts["INPUT_LABEL_DURATIONS"] = labels;
   }
 
   return testEnv(tools, opts);
@@ -366,21 +403,22 @@ function mockUpdateStatus(state, description, mockSha) {
     {
       state,
       context: "hold-your-horses",
-      description
+      description,
     }
   );
 }
 
-function mockOpenPulls() {
+function mockOpenPulls(labels) {
   nock("https://api.github.com")
     .get("/repos/mheap/test-repo-hyh-stream/pulls?state=open")
     .reply(200, [
       {
         merge_commit_sha,
         head: {
-          sha
-        }
-      }
+          sha,
+        },
+        labels: labels || [],
+      },
     ]);
 }
 
@@ -390,7 +428,7 @@ function mockStatuses(states) {
     response.push({
       state: s[0],
       context: "hold-your-horses",
-      updated_at: s[1]
+      updated_at: s[1],
     });
   }
 
@@ -401,8 +439,8 @@ function mockStatuses(states) {
     .reply(200, response);
 }
 
-function mockAllSuccessRequests() {
-  mockOpenPulls();
+function mockAllSuccessRequests(labels) {
+  mockOpenPulls(labels);
   mockStatuses([["pending", "2020-03-07T16:50:47Z"]]);
 
   mockUpdateStatus("success", "Review time elapsed").reply(200);
@@ -412,7 +450,7 @@ function mockAllSuccessRequests() {
 function mockCommentAdded(body) {
   nock("https://api.github.com")
     .post("/repos/mheap/test-repo-hyh-stream/issues/8/comments", {
-      body
+      body,
     })
     .reply(200);
 }
@@ -423,15 +461,15 @@ function mockGetSinglePr(number) {
     .reply(200, {
       merge_commit_sha,
       head: {
-        sha
-      }
+        sha,
+      },
     });
 }
 
 function mockLabelAdded(labels) {
   nock("https://api.github.com")
     .post("/repos/mheap/test-repo-hyh-stream/issues/8/labels", {
-      labels
+      labels,
     })
     .reply(200);
 }
