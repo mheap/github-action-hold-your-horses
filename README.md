@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Hold Your Horses
-        uses: mheap/github-action-hold-your-horses@master
+        uses: mheap/github-action-hold-your-horses@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
